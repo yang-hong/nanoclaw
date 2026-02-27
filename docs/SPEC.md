@@ -254,6 +254,26 @@ Or edit the default in `src/config.ts`. This changes:
 - The trigger pattern (messages must start with `@YourName`)
 - The response prefix (`YourName:` added automatically)
 
+### Choosing the Claude model
+
+NanoClaw uses **Anthropic Claude** only (no Gemini or other providers). The model is chosen as follows:
+
+1. **Environment variable (recommended)** — In `.env`:
+   ```bash
+   CLAUDE_MODEL=opus
+   ```
+   Values: `default`, `sonnet`, `opus`, `haiku`, `sonnet[1m]`, `opusplan`, or a full model ID (e.g. `claude-sonnet-4-6`). Affects all groups.
+
+2. **Per-group settings** — Edit `data/sessions/<group-folder>/.claude/settings.json` and add:
+   ```json
+   {
+     "model": "sonnet"
+   }
+   ```
+   This file is created on first use; add the `model` key to override for that group. The SDK loads it when `settingSources` includes `user` (the session dir is mounted as `~/.claude` in the container).
+
+If both are set, the env `CLAUDE_MODEL` is passed explicitly to the SDK and takes precedence over the session settings file.
+
 ### Placeholder Values in launchd
 
 Files with `{{PLACEHOLDER}}` values need to be configured:

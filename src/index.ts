@@ -50,6 +50,7 @@ let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
+const lastInputTime: Record<string, number> = {};
 
 let whatsapp: WhatsAppChannel;
 const channels: Channel[] = [];
@@ -190,6 +191,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
+  lastInputTime[chatJid] = Date.now();
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -202,7 +204,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
+        const elapsed = ((Date.now() - (lastInputTime[chatJid] || Date.now())) / 1000).toFixed(1);
+        await channel.sendMessage(chatJid, `${text}\n\n⏱ ${elapsed}s`);
         outputSentToUser = true;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
@@ -396,6 +399,7 @@ async function startMessageLoop(): Promise<void> {
           const formatted = formatMessages(messagesToSend);
 
           if (queue.sendMessage(chatJid, formatted)) {
+            lastInputTime[chatJid] = Date.now();
             logger.debug(
               { chatJid, count: messagesToSend.length },
               'Piped messages to active container',
@@ -501,6 +505,10 @@ async function main(): Promise<void> {
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
       return channel.sendMessage(jid, text);
+    },
+    sendImage: (jid, imagePath, caption) => {
+      if (!whatsapp) throw new Error('WhatsApp channel not ready');
+      return whatsapp.sendImage(jid, imagePath, caption);
     },
     registeredGroups: () => registeredGroups,
     registerGroup,

@@ -1,0 +1,15 @@
+skill: add-camera
+version: 1.0.0
+description: "USB camera capture — lets the agent take a photo via IPC and send it to WhatsApp"
+core_version: 0.1.0
+modifies:
+  - src/channels/whatsapp.ts
+  - src/ipc.ts
+  - src/index.ts
+structured:
+  system_dependencies:
+    - fswebcam
+  env_additions: []
+conflicts: []
+depends: []
+test: "npm run build"

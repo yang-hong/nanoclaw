@@ -1,0 +1,19 @@
+skill: add-yolo-detect
+version: 1.0.0
+description: "YOLO object detection via NPU — lets the agent detect objects in a photo and send annotated results to WhatsApp"
+core_version: 0.1.0
+adds:
+  - scripts/yolo-detect.py
+modifies:
+  - src/ipc.ts
+  - groups/main/CLAUDE.md
+structured:
+  system_dependencies:
+    - python3-opencv
+    - python3-numpy
+    - rknn-toolkit-lite2   # pip3 install rknn-toolkit-lite2
+  env_additions: []
+conflicts: []
+depends:
+  - add-camera   # requires sendImage in IpcDeps
+test: "npm run build"

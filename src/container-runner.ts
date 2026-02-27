@@ -38,6 +38,8 @@ export interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  /** Override Claude model (e.g. "opus", "sonnet", "haiku"). From env CLAUDE_MODEL if not set. */
+  model?: string;
   secrets?: Record<string, string>;
 }
 
@@ -207,14 +209,37 @@ function readSecrets(): Record<string, string> {
   return readEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
 }
 
+/**
+ * Read non-secret container configuration from .env.
+ */
+function readContainerConfig(): Record<string, string> {
+  return readEnvFile(['CLAUDE_MODEL']);
+}
+
+/**
+ * Read non-secret env vars from .env that should be passed to containers
+ * via -e flags. These are available to Bash subprocesses inside the container.
+ */
+function readContainerEnvVars(): Record<string, string> {
+  return readEnvFile(['GOOGLE_API_KEY']);
+}
+
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
+  extraEnvVars?: Record<string, string>,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // Pass non-secret env vars (API keys for agent tools, etc.)
+  if (extraEnvVars) {
+    for (const [key, value] of Object.entries(extraEnvVars)) {
+      args.push('-e', `${key}=${value}`);
+    }
+  }
 
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
@@ -253,7 +278,8 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const containerEnvVars = readContainerEnvVars();
+  const containerArgs = buildContainerArgs(mounts, containerName, containerEnvVars);
 
   logger.debug(
     {
@@ -295,6 +321,11 @@ export async function runContainerAgent(
 
     // Pass secrets via stdin (never written to disk or mounted as files)
     input.secrets = readSecrets();
+    // Apply global model override from env if not already set on input
+    if (input.model == null) {
+      input.model =
+        process.env.CLAUDE_MODEL || readContainerConfig().CLAUDE_MODEL;
+    }
     container.stdin.write(JSON.stringify(input));
     container.stdin.end();
     // Remove secrets from input so they don't appear in logs

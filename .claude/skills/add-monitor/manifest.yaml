@@ -1,0 +1,20 @@
+skill: add-monitor
+version: 1.0.0
+description: "Continuous NPU-based surveillance — lightweight Python loop that watches for objects and alerts via WhatsApp"
+core_version: 0.1.0
+adds:
+  - scripts/monitor.py
+modifies:
+  - src/ipc.ts
+  - groups/main/CLAUDE.md
+structured:
+  system_dependencies:
+    - python3-opencv
+    - python3-numpy
+    - rknn-toolkit-lite2
+  env_additions: []
+conflicts: []
+depends:
+  - add-camera
+  - add-yolo-detect
+test: "npm run build"

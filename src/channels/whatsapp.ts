@@ -6,6 +6,7 @@ import makeWASocket, {
   Browsers,
   DisconnectReason,
   WASocket,
+  downloadContentFromMessage,
   fetchLatestWaWebVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
@@ -16,6 +17,7 @@ import {
   ASSISTANT_NAME,
   STORE_DIR,
 } from '../config.js';
+import { readEnvFile } from '../env.js';
 import { getLastGroupSync, setLastGroupSync, updateChatName } from '../db.js';
 import { logger } from '../logger.js';
 import {
@@ -26,6 +28,69 @@ import {
 } from '../types.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Transcribe a WhatsApp audio/voice message using OpenAI Whisper API.
+ * Returns the transcription text, or null if transcription fails or no API key.
+ */
+async function transcribeAudio(
+  msg: Parameters<typeof downloadContentFromMessage>[0],
+  mediaType: 'audio' | 'ptt',
+): Promise<string | null> {
+  const { OPENAI_API_KEY } = readEnvFile(['OPENAI_API_KEY']);
+  if (!OPENAI_API_KEY) return null;
+
+  try {
+    // Download audio stream from WhatsApp
+    const stream = await downloadContentFromMessage(msg, mediaType);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const audioBuffer = Buffer.concat(chunks);
+
+    // Build multipart form for Whisper API
+    const boundary = `----WA${Date.now()}`;
+    const CRLF = '\r\n';
+
+    const header =
+      `--${boundary}${CRLF}` +
+      `Content-Disposition: form-data; name="model"${CRLF}${CRLF}` +
+      `whisper-1${CRLF}` +
+      `--${boundary}${CRLF}` +
+      `Content-Disposition: form-data; name="file"; filename="audio.ogg"${CRLF}` +
+      `Content-Type: audio/ogg${CRLF}${CRLF}`;
+    const footer = `${CRLF}--${boundary}--${CRLF}`;
+
+    const body = Buffer.concat([
+      Buffer.from(header),
+      audioBuffer,
+      Buffer.from(footer),
+    ]);
+
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      logger.error({ status: response.status, err }, 'Whisper API error');
+      return null;
+    }
+
+    const result = (await response.json()) as { text?: string };
+    return result.text?.trim() || null;
+  } catch (err) {
+    logger.error({ err }, 'Failed to transcribe audio');
+    return null;
+  }
+}
 
 export interface WhatsAppChannelOpts {
   onMessage: OnInboundMessage;
@@ -195,12 +260,49 @@ export class WhatsAppChannel implements Channel {
         // Only deliver full message for registered groups
         const groups = this.opts.registeredGroups();
         if (groups[chatJid]) {
-          const content =
+          let content =
             msg.message?.conversation ||
             msg.message?.extendedTextMessage?.text ||
             msg.message?.imageMessage?.caption ||
             msg.message?.videoMessage?.caption ||
             '';
+
+          // Extract location from location messages (pin or live)
+          if (!content) {
+            const locMsg =
+              msg.message?.locationMessage ||
+              msg.message?.liveLocationMessage;
+            if (locMsg) {
+              const lat = locMsg.degreesLatitude;
+              const lng = locMsg.degreesLongitude;
+              const name = (locMsg as { name?: string }).name;
+              const addr = (locMsg as { address?: string }).address;
+              if (lat != null && lng != null) {
+                const parts = [`[📍 Location: ${lat}, ${lng}`];
+                if (name) parts.push(`name: ${name}`);
+                if (addr) parts.push(`address: ${addr}`);
+                content = parts.join(' | ') + ']';
+                logger.info({ chatJid, lat, lng, name }, 'Location message received');
+              }
+            }
+          }
+
+          // Transcribe voice/audio messages via OpenAI Whisper
+          if (!content) {
+            const audioMsg =
+              msg.message?.audioMessage || msg.message?.ptvMessage;
+            if (audioMsg) {
+              const mediaType = msg.message?.ptvMessage ? 'ptt' : 'audio';
+              logger.info({ chatJid, mediaType }, 'Transcribing voice message');
+              const transcription = await transcribeAudio(audioMsg, mediaType);
+              if (transcription) {
+                content = `[Voice] ${transcription}`;
+                logger.info({ chatJid, transcription }, 'Voice message transcribed');
+              } else {
+                logger.warn({ chatJid }, 'Voice transcription failed or no API key');
+              }
+            }
+          }
 
           // Skip protocol messages with no text content (encryption keys, read receipts, etc.)
           if (!content) continue;
@@ -259,6 +361,29 @@ export class WhatsAppChannel implements Channel {
         { jid, err, queueSize: this.outgoingQueue.length },
         'Failed to send, message queued',
       );
+    }
+  }
+
+  async sendImage(jid: string, imagePath: string, caption?: string): Promise<void> {
+    if (!this.connected) {
+      logger.warn({ jid }, 'WA disconnected, cannot send image');
+      return;
+    }
+    try {
+      const imageBuffer = fs.readFileSync(imagePath);
+      const captionText = caption
+        ? ASSISTANT_HAS_OWN_NUMBER
+          ? caption
+          : `${ASSISTANT_NAME}: ${caption}`
+        : undefined;
+      await this.sock.sendMessage(jid, {
+        image: imageBuffer,
+        ...(captionText ? { caption: captionText } : {}),
+      });
+      logger.info({ jid, imagePath }, 'Image sent');
+    } catch (err) {
+      logger.error({ jid, imagePath, err }, 'Failed to send image');
+      throw err;
     }
   }
 
