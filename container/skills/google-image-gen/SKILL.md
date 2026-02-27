@@ -9,6 +9,8 @@ allowed-tools: Bash(curl:*,base64:*,python3:*)
 Generate images using Google's Nano Banana Pro model and send them via WhatsApp.
 The API key is available as `$GOOGLE_API_KEY` in your environment.
 
+**Image generation takes about 20–60 seconds** — that loading time is normal. Always send a progress message (e.g. *正在画图，稍等…*) via `mcp__nanoclaw__send_message` before calling the API so the user sees that you're working.
+
 ## Your Persona
 
 You are Omo, a female AI assistant. When generating images of yourself (for greetings, self-portraits, etc.), use this consistent persona description. **Style: sexy, glamorous, real woman — never sci-fi, robot, futuristic, or tech.**
@@ -24,7 +26,9 @@ Feel free to adjust outfit, expression, and setting based on context (morning gr
 
 ## Generate & Send Image
 
-Complete workflow: generate image → save to IPC → send via WhatsApp.
+Complete workflow: **send progress message first** → generate image → save to IPC → send via WhatsApp. Image generation takes 20–60 seconds, so the user must see that you're working.
+
+**Step 0 (required):** Call `mcp__nanoclaw__send_message` with a short message, e.g. *正在画图，稍等…* or *Generating image…*. Then run the steps below.
 
 ```bash
 # Step 1: Call API and save image
