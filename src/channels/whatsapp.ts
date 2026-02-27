@@ -68,15 +68,18 @@ async function transcribeAudio(
       Buffer.from(footer),
     ]);
 
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'Content-Length': String(body.length),
+    const response = await fetch(
+      'https://api.openai.com/v1/audio/transcriptions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': String(body.length),
+        },
+        body,
       },
-      body,
-    });
+    );
 
     if (!response.ok) {
       const err = await response.text();
@@ -270,8 +273,7 @@ export class WhatsAppChannel implements Channel {
           // Extract location from location messages (pin or live)
           if (!content) {
             const locMsg =
-              msg.message?.locationMessage ||
-              msg.message?.liveLocationMessage;
+              msg.message?.locationMessage || msg.message?.liveLocationMessage;
             if (locMsg) {
               const lat = locMsg.degreesLatitude;
               const lng = locMsg.degreesLongitude;
@@ -282,7 +284,10 @@ export class WhatsAppChannel implements Channel {
                 if (name) parts.push(`name: ${name}`);
                 if (addr) parts.push(`address: ${addr}`);
                 content = parts.join(' | ') + ']';
-                logger.info({ chatJid, lat, lng, name }, 'Location message received');
+                logger.info(
+                  { chatJid, lat, lng, name },
+                  'Location message received',
+                );
               }
             }
           }
@@ -297,9 +302,15 @@ export class WhatsAppChannel implements Channel {
               const transcription = await transcribeAudio(audioMsg, mediaType);
               if (transcription) {
                 content = `[Voice] ${transcription}`;
-                logger.info({ chatJid, transcription }, 'Voice message transcribed');
+                logger.info(
+                  { chatJid, transcription },
+                  'Voice message transcribed',
+                );
               } else {
-                logger.warn({ chatJid }, 'Voice transcription failed or no API key');
+                logger.warn(
+                  { chatJid },
+                  'Voice transcription failed or no API key',
+                );
               }
             }
           }
@@ -364,7 +375,11 @@ export class WhatsAppChannel implements Channel {
     }
   }
 
-  async sendImage(jid: string, imagePath: string, caption?: string): Promise<void> {
+  async sendImage(
+    jid: string,
+    imagePath: string,
+    caption?: string,
+  ): Promise<void> {
     if (!this.connected) {
       logger.warn({ jid }, 'WA disconnected, cannot send image');
       return;

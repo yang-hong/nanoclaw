@@ -19,7 +19,11 @@ import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
-  sendImage: (jid: string, imagePath: string, caption?: string) => Promise<void>;
+  sendImage: (
+    jid: string,
+    imagePath: string,
+    caption?: string,
+  ) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroupMetadata: (force: boolean) => Promise<void>;
@@ -396,12 +400,18 @@ export async function processTaskIpc(
       }
       const targetGroup = registeredGroups[targetJid];
       if (!isMain && (!targetGroup || targetGroup.folder !== sourceGroup)) {
-        logger.warn({ sourceGroup, targetJid }, 'Unauthorized capture_photo blocked');
+        logger.warn(
+          { sourceGroup, targetJid },
+          'Unauthorized capture_photo blocked',
+        );
         break;
       }
 
       const device = '/dev/video0';
-      const tmpPath = path.join(os.tmpdir(), `nanoclaw-photo-${Date.now()}.jpg`);
+      const tmpPath = path.join(
+        os.tmpdir(),
+        `nanoclaw-photo-${Date.now()}.jpg`,
+      );
       const caption = (data as { caption?: string }).caption;
 
       try {
@@ -414,9 +424,15 @@ export async function processTaskIpc(
         logger.info({ targetJid }, 'Photo sent via WhatsApp');
       } catch (err) {
         logger.error({ err }, 'Failed to capture or send photo');
-        await deps.sendMessage(targetJid, '📷 拍照失败，请确认摄像头已连接。').catch(() => {});
+        await deps
+          .sendMessage(targetJid, '📷 拍照失败，请确认摄像头已连接。')
+          .catch(() => {});
       } finally {
-        try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {
+          /* ignore */
+        }
       }
       break;
     }
@@ -430,15 +446,21 @@ export async function processTaskIpc(
       }
       const targetGroup = registeredGroups[targetJid];
       if (!isMain && (!targetGroup || targetGroup.folder !== sourceGroup)) {
-        logger.warn({ sourceGroup, targetJid }, 'Unauthorized capture_and_detect blocked');
+        logger.warn(
+          { sourceGroup, targetJid },
+          'Unauthorized capture_and_detect blocked',
+        );
         break;
       }
 
       const device = '/dev/video0';
       const ts = Date.now();
-      const tmpPhoto      = path.join(os.tmpdir(), `nanoclaw-photo-${ts}.jpg`);
-      const tmpAnnotated  = path.join(os.tmpdir(), `nanoclaw-annotated-${ts}.jpg`);
-      const userCaption   = (data as { caption?: string }).caption;
+      const tmpPhoto = path.join(os.tmpdir(), `nanoclaw-photo-${ts}.jpg`);
+      const tmpAnnotated = path.join(
+        os.tmpdir(),
+        `nanoclaw-annotated-${ts}.jpg`,
+      );
+      const userCaption = (data as { caption?: string }).caption;
 
       try {
         // Step 1: capture frame
@@ -454,20 +476,25 @@ export async function processTaskIpc(
           'python3',
           [
             'scripts/yolo-detect.py',
-            '--image',    tmpPhoto,
-            '--annotate', tmpAnnotated,
-            '--conf',     '0.5',
+            '--image',
+            tmpPhoto,
+            '--annotate',
+            tmpAnnotated,
+            '--conf',
+            '0.5',
           ],
           { cwd: process.cwd(), timeout: 30000, encoding: 'utf-8' },
         );
 
         let caption = userCaption ?? '🔍 YOLO detection';
-        let imageToSend = tmpPhoto;   // fall back to raw photo if YOLO fails
+        let imageToSend = tmpPhoto; // fall back to raw photo if YOLO fails
 
         if (yoloResult.status === 0 && yoloResult.stdout) {
           try {
             // RKNN runtime may print log lines to stdout; extract the JSON line only
-            const jsonLine = yoloResult.stdout.split('\n').find((l: string) => l.trimStart().startsWith('{'));
+            const jsonLine = yoloResult.stdout
+              .split('\n')
+              .find((l: string) => l.trimStart().startsWith('{'));
             const parsed = JSON.parse(jsonLine || '{}') as {
               success: boolean;
               count: number;
@@ -481,7 +508,9 @@ export async function processTaskIpc(
               // Build a compact label summary (cap at 10 entries)
               const summary = parsed.detections
                 .slice(0, 10)
-                .map((d) => `• ${d.label} (${(d.confidence * 100).toFixed(0)}%)`)
+                .map(
+                  (d) => `• ${d.label} (${(d.confidence * 100).toFixed(0)}%)`,
+                )
                 .join('\n');
 
               caption =
@@ -490,21 +519,43 @@ export async function processTaskIpc(
                   : `${userCaption ? userCaption + '\n' : ''}🔍 Detected ${parsed.count} object(s):\n${summary}`;
             }
           } catch {
-            logger.warn({ stdout: yoloResult.stdout }, 'YOLO script output is not valid JSON');
+            logger.warn(
+              { stdout: yoloResult.stdout },
+              'YOLO script output is not valid JSON',
+            );
           }
         } else {
-          logger.error({ stderr: yoloResult.stderr, status: yoloResult.status }, 'YOLO script failed');
+          logger.error(
+            { stderr: yoloResult.stderr, status: yoloResult.status },
+            'YOLO script failed',
+          );
           caption = `${userCaption ? userCaption + '\n' : ''}⚠️ Detection failed — sending raw photo.`;
         }
 
         await deps.sendImage(targetJid, imageToSend, caption);
-        logger.info({ targetJid, count: caption }, 'YOLO result sent via WhatsApp');
+        logger.info(
+          { targetJid, count: caption },
+          'YOLO result sent via WhatsApp',
+        );
       } catch (err) {
         logger.error({ err }, 'capture_and_detect: fatal error');
-        await deps.sendMessage(targetJid, '📷 Capture/detection failed. Is the camera plugged in?').catch(() => {});
+        await deps
+          .sendMessage(
+            targetJid,
+            '📷 Capture/detection failed. Is the camera plugged in?',
+          )
+          .catch(() => {});
       } finally {
-        try { fs.unlinkSync(tmpPhoto);     } catch { /* ignore */ }
-        try { fs.unlinkSync(tmpAnnotated); } catch { /* ignore */ }
+        try {
+          fs.unlinkSync(tmpPhoto);
+        } catch {
+          /* ignore */
+        }
+        try {
+          fs.unlinkSync(tmpAnnotated);
+        } catch {
+          /* ignore */
+        }
       }
       break;
     }
@@ -518,15 +569,21 @@ export async function processTaskIpc(
       // Non-main groups can only monitor their own chat
       const targetGroup = registeredGroups[targetJid];
       if (!isMain && (!targetGroup || targetGroup.folder !== sourceGroup)) {
-        logger.warn({ sourceGroup, targetJid }, 'Unauthorized start_monitor blocked');
+        logger.warn(
+          { sourceGroup, targetJid },
+          'Unauthorized start_monitor blocked',
+        );
         break;
       }
 
       const monitorConfig = {
         chatJid: targetJid,
         interval: (data as { interval?: number }).interval ?? 10,
-        detectLabels: (data as { detectLabels?: string[] }).detectLabels ?? ['person'],
-        confidenceThreshold: (data as { confidenceThreshold?: number }).confidenceThreshold ?? 0.5,
+        detectLabels: (data as { detectLabels?: string[] }).detectLabels ?? [
+          'person',
+        ],
+        confidenceThreshold:
+          (data as { confidenceThreshold?: number }).confidenceThreshold ?? 0.5,
         sendAnnotated: true,
         groupFolder: sourceGroup,
       };
@@ -535,24 +592,31 @@ export async function processTaskIpc(
 
       // Start monitor process if not already running
       if (!monitorProcess || monitorProcess.exitCode !== null) {
-        const logFd = fs.openSync(path.join(process.cwd(), 'logs', 'monitor.log'), 'a');
+        const logFd = fs.openSync(
+          path.join(process.cwd(), 'logs', 'monitor.log'),
+          'a',
+        );
         monitorProcess = spawn('python3', ['-u', MONITOR_SCRIPT], {
           stdio: ['ignore', logFd, logFd],
           detached: true,
         });
         monitorProcess.unref();
         fs.closeSync(logFd);
-        logger.info({ pid: monitorProcess.pid, config: monitorConfig }, 'Monitor process started');
+        logger.info(
+          { pid: monitorProcess.pid, config: monitorConfig },
+          'Monitor process started',
+        );
       } else {
         logger.info('Monitor config updated (process already running)');
       }
 
-      await deps.sendMessage(targetJid,
+      await deps.sendMessage(
+        targetJid,
         `👁️ 监控已启动\n` +
-        `• 间隔: ${monitorConfig.interval}s\n` +
-        `• 目标: ${monitorConfig.detectLabels.join(', ')}\n` +
-        `• 置信度: ${monitorConfig.confidenceThreshold}\n\n` +
-        `说"停止监控"即可关闭。`
+          `• 间隔: ${monitorConfig.interval}s\n` +
+          `• 目标: ${monitorConfig.detectLabels.join(', ')}\n` +
+          `• 置信度: ${monitorConfig.confidenceThreshold}\n\n` +
+          `说"停止监控"即可关闭。`,
       );
       break;
     }
@@ -571,7 +635,11 @@ export async function processTaskIpc(
       }
 
       // Clean up config
-      try { fs.unlinkSync(MONITOR_CONFIG); } catch { /* ignore */ }
+      try {
+        fs.unlinkSync(MONITOR_CONFIG);
+      } catch {
+        /* ignore */
+      }
 
       if (targetJid) {
         await deps.sendMessage(targetJid, '👁️ 监控已停止。');
@@ -585,6 +653,15 @@ export async function processTaskIpc(
       const caption = (data as { caption?: string }).caption;
       if (!targetJid || !imagePath) {
         logger.warn({ data }, 'send_image: missing chatJid or imagePath');
+        break;
+      }
+      // Same permission as capture_photo: main can send to any; others only to their own chat
+      const targetGroup = registeredGroups[targetJid];
+      if (!isMain && (!targetGroup || targetGroup.folder !== sourceGroup)) {
+        logger.warn(
+          { sourceGroup, targetJid },
+          'Unauthorized send_image blocked',
+        );
         break;
       }
       // Resolve relative paths against the group's IPC directory
@@ -603,7 +680,11 @@ export async function processTaskIpc(
       } catch (err) {
         logger.error({ err, targetJid }, 'Failed to send monitor image');
       } finally {
-        try { fs.unlinkSync(imagePath); } catch { /* ignore */ }
+        try {
+          fs.unlinkSync(imagePath);
+        } catch {
+          /* ignore */
+        }
       }
       break;
     }
