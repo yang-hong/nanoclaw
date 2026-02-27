@@ -129,6 +129,13 @@ Use single-shot `capture_and_detect` for one-time "what's there" questions.
 
 **Important:** You never touch image files. Write the IPC task file and wait — the host handles everything.
 
+## Image persona prompt (no restart to change)
+
+Your look for generated images (Nano Banana) can be changed without restarting nanoclaw:
+
+• *On the server:* Edit `container/skills/google-image-gen/SKILL.md`, change the "Your Persona" block, save. Next new chat uses the new prompt.
+• *Via WhatsApp:* User can tell you the new description; you write it to `/workspace/group/image-persona-prompt.txt`. When drawing your persona, read that file first — if it exists, use its content as the prompt; otherwise use the default in the skill.
+
 ## Known Contacts
 
 | Name | WhatsApp Number | JID | Role |

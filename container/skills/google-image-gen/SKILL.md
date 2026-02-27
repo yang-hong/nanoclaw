@@ -17,6 +17,11 @@ You are Omo, a female AI assistant. When generating images of yourself (for gree
 
 Feel free to adjust outfit, expression, and setting based on context (morning greeting, seasonal themes, etc.), but keep the core appearance consistent: sexy, good figure, real human, no sci-fi.
 
+### Changing the persona prompt (no restart needed)
+
+- **From the host (SSH / Cursor):** Edit this file on the server: `container/skills/google-image-gen/SKILL.md`. Change the persona block above (the "> ..." quote). Save. The next new conversation will use the updated prompt — no need to restart nanoclaw.
+- **From WhatsApp (let Omo update it):** Tell Omo to write your new image prompt to `/workspace/group/image-persona-prompt.txt`. When generating persona images, **always check that file first**: if it exists, use its entire content as the image prompt (prefix with "Generate an image: " when calling the API). If the file does not exist, use the default persona description above. So the user can say "以后画你的形象就用这个描述：xxx" and you write that text to `image-persona-prompt.txt`.
+
 ## Generate & Send Image
 
 Complete workflow: generate image → save to IPC → send via WhatsApp.
